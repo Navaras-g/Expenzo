@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\for.net3\\Expenzo\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{C1EE9770-405B-4A13-9F07-EC8EF2A58EE4}|Expenzo\\Expenzo.csproj|d:\\for.net3\\expenzo\\expenzo\\components\\pages\\home.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}",
+      "RelativeMoniker": "D:0:0:{C1EE9770-405B-4A13-9F07-EC8EF2A58EE4}|Expenzo\\Expenzo.csproj|solutionrelative:expenzo\\components\\pages\\home.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Home.razor",
+              "DocumentMoniker": "D:\\for.net3\\Expenzo\\Expenzo\\Components\\Pages\\Home.razor",
+              "RelativeDocumentMoniker": "Expenzo\\Components\\Pages\\Home.razor",
+              "ToolTip": "D:\\for.net3\\Expenzo\\Expenzo\\Components\\Pages\\Home.razor",
+              "RelativeToolTip": "Expenzo\\Components\\Pages\\Home.razor",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
+              "WhenOpened": "2024-12-19T04:54:56.663Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
