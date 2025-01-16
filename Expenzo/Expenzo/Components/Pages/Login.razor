@@ -1,0 +1,90 @@
+﻿@page "/login"
+@using Expenzo.Model
+@using Expenzo.Services;
+@using Expenzo.Services.Interface
+@inject IUserService userService
+@inject NavigationManager navigationManager
+@inject AuthStateService authStateService
+
+
+
+<h3 style="text-align: center; font-family: Arial, sans-serif; color: #333;">Login</h3>
+
+<div style="max-width: 400px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);">
+    <p style="text-align: center; font-size: 14px; color: #666;">
+        Don't have an account?
+        <a href="/signup" style="color: #007bff; text-decoration: none;">Sign Up</a>
+    </p>
+
+    <form>
+        <!-- Username Field -->
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px;">Username:</label>
+            <input type="text" @bind="username"
+                   style="width: 100%; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 5px;"
+                   placeholder="Enter your username" />
+        </div>
+
+        <!-- Password Field -->
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px;">Password:</label>
+            <input type="password" @bind="password"
+                   style="width: 100%; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 5px;"
+                   placeholder="Enter your password" />
+        </div>
+
+        <!-- Login Button -->
+        <button type="button" @onclick="LoginUser"
+                style="width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; cursor: pointer;">
+            Login
+        </button>
+    </form>
+</div>
+
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <p class="error-message">@errorMessage</p>
+}
+
+@code {
+    private string username;
+    private string password;
+    private string errorMessage;
+
+    private async Task LoginUser()
+    {
+        try
+        {
+            var users = await userService.GetAllUsersAsync();
+            var user = users.FirstOrDefault(u => u.Username == username && u.Password == HashPassword(password));
+
+            if (user != null)
+            {
+                // Set the authenticated user in state management
+                authStateService.SetLoggedInUser(user);
+
+                // Redirect to the dashboard or todo page
+                navigationManager.NavigateTo("/dashboard");
+            }
+            else
+            {
+                errorMessage = "Invalid username or password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred during login: {ex.Message}";
+        }
+    }
+
+    private string HashPassword(string password)
+    {
+        using (var sha256 = System.Security.Cryptography.SHA256.Create())
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(password);
+            var hash = sha256.ComputeHash(bytes);
+            return Convert.ToBase64String(hash);
+        }
+    }
+}

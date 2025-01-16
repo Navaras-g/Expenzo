@@ -1,0 +1,317 @@
+﻿@page "/dashboard"
+@using Expenzo.Model
+@using Expenzo.Services;
+@using Expenzo.Services.Interface
+@inject ITransactionService transactionService
+@inject IDebtService debtService
+@inject AuthStateService authStateService
+@inject NavigationManager navigationManager
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f9f9f9;
+        color: #333;
+    }
+
+    .container {
+        padding: 20px;
+    }
+
+    h3, h4 {
+        color: #4CAF50;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        background-color: #fff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    th {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px;
+        text-align: left;
+        font-weight: bold;
+        border-bottom: 2px solid #ddd;
+    }
+
+    td, th {
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+    }
+
+    td {
+        text-align: left;
+    }
+
+    .sort-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+        .sort-container label {
+            font-weight: bold;
+        }
+
+    select {
+        padding: 5px;
+        font-size: 14px;
+    }
+
+    .highlight-red {
+        background-color: #FFCDD2;
+    }
+
+    .chart-space {
+        display: flex;
+        gap: 20px;
+        margin-top: 30px;
+    }
+
+        .chart-space .chart {
+            flex: 1;
+            height: 250px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #999;
+            border: 1px solid #ddd;
+        }
+</style>
+
+<div class="container">
+    <h3>Dashboard</h3>
+    <h4>Username: @loggedInUser.Username</h4>
+    <h4>Current Balance: @currentBalance</h4>
+
+    <h3>Totals</h3>
+    <p>Total Inflow: @totalInflow</p>
+    <p>Total Outflow: @totalOutflow</p>
+    <p>Pending Debt: @pendingDebt</p>
+    <p>Cleared Debt: @clearedDebt</p>
+
+    <div>
+        <h4>Highest and Lowest</h4>
+        <div class="sort-container">
+            <label for="sort">Sort</label>
+            <select id="sort" @bind="sortDirection">
+                <option value="Highest">Highest</option>
+                <option value="Lowest">Lowest</option>
+            </select>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Id</th>
+                    <th>Category</th>
+                    <th>Tag</th>
+                    <th>Amount</th>
+                    <th>Created Date</th>
+                    <th>Title</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (sortedTransactions.Any())
+                {
+                    @foreach (var transaction in sortedTransactions)
+                    {
+                        <tr>
+                            <td>@transaction.TransactionId</td>
+                            <td>@transaction.CategoryId</td>
+                            <td>@transaction.TagId</td>
+                            <td>@transaction.Amount</td>
+                            <td>@transaction.CreatedDate</td>
+                            <td>@transaction.Title</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div>
+        <h4>Pending Debts</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Id</th>
+                    <th>Category</th>
+                    <th>Tag</th>
+                    <th>Amount</th>
+                    <th>Created Date</th>
+                    <th>Title</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (pendingDebts.Any())
+                {
+                    @foreach (var transaction in pendingDebts)
+                    {
+                        <tr class="highlight-red">
+                            <td>@transaction.TransactionId</td>
+                            <td>@transaction.CategoryId</td>
+                            <td>@transaction.TagId</td>
+                            <td>@transaction.Amount</td>
+                            <td>@transaction.CreatedDate</td>
+                            <td>@transaction.Title</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="chart-space">
+        <div class="chart">Chart 1</div>
+        <div class="chart">Chart 2</div>
+    </div>
+</div>
+
+
+
+@code {
+    private User loggedInUser = new User();
+    private double currentBalance;
+
+    private List<Transaction> userTransactions = new List<Transaction>();
+    private List<DisplayTransactionModel> dashboardDisplayTransactionModels = new List<DisplayTransactionModel>();
+
+    private List<Transaction> creditDebitTransactions = new List<Transaction>();
+    private List<Transaction> debtTransactions = new List<Transaction>();
+
+
+
+    private List<DisplayDebtModel> debts = new List<DisplayDebtModel>();
+    private List<DisplayDebtModel> pendingDebts = new List<DisplayDebtModel>();
+
+    private IEnumerable<DisplayTransactionModel> filteredTransactions => FilterTransactions();
+    private IEnumerable<DisplayTransactionModel> sortedTransactions => SortTransactions(filteredTransactions);
+
+    private double totalInflow;
+    private double totalInflowCount;
+    private double totalOutflow;
+    private double totalOutflowCount;
+    private double pendingDebt;
+    private double pendingDebtCount;
+    private double clearedDebt;
+    private double clearedDebtCount;
+
+    private string sortDirection = "Highest"; //Default
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetLoggedInUserDetailAsync();
+        await GetLoggedInUsersTransactionsAsync();
+        // separating debt from credit and debit (inflow and outflow)
+        await SeparateDebtsFromOtherTransactions();
+        // combining debt and its transaction to display debt model
+        await GetDebtRecords();
+        await GetPendingDebts();
+        CalculateCurrentBalance();
+        await ConvertToDTO(userTransactions);
+    }
+
+    private async Task GetLoggedInUserDetailAsync()
+    {
+        loggedInUser = authStateService.GetLoggedInUser();
+        if (loggedInUser == null)
+        {
+            navigationManager.NavigateTo("/");
+        }
+    }
+
+    private async Task GetLoggedInUsersTransactionsAsync()
+    {
+        // all transactions belonging to the logged in user
+        userTransactions = await transactionService.GetUsersTransactionsAsync(loggedInUser.UserId);
+    }
+
+    private async Task ConvertToDTO(List<Transaction> userTransactions)
+    {
+        foreach (Transaction userTransaction in userTransactions)
+        {
+            DisplayTransactionModel dashboardDisplayTransactionModel = new DisplayTransactionModel(
+                userTransaction.TransactionId, userTransaction.Title, userTransaction.Amount,
+                userTransaction.CategoryId, userTransaction.CreatedDate, userTransaction.TagId);
+            dashboardDisplayTransactionModels.Add(dashboardDisplayTransactionModel);
+        }
+    }
+
+    private async Task SeparateDebtsFromOtherTransactions()
+    {
+        debtTransactions = userTransactions.Where(t => t.CategoryId == "Debt").ToList();
+
+        creditDebitTransactions = userTransactions.Where(t => t.CategoryId != "Debt").ToList();
+    }
+
+
+    private async Task GetDebtRecords()
+    {
+        foreach (Transaction debtTransaction in debtTransactions)
+        {
+            // setting attributes already present in transaction obj
+            DisplayDebtModel displayDebtModel = new DisplayDebtModel(debtTransaction.TransactionId, debtTransaction.Title, debtTransaction.Amount,
+                debtTransaction.CreatedDate, debtTransaction.Note, debtTransaction.TagId, debtTransaction.UserId, debtTransaction.CategoryId);
+
+            Debt debt = await debtService.GetDebtByTransactionIdAsync(debtTransaction.TransactionId);
+
+            //setting the rest of the attributes
+            if (debt != null)
+            {
+                displayDebtModel.DebtId = debt.DebtId;
+                displayDebtModel.Source = debt.Source;
+                displayDebtModel.DueDate = debt.DueDate;
+                displayDebtModel.Status = debt.Status;
+
+                // Add to the list only if debt is not null
+                debts.Add(displayDebtModel);
+            }
+        }
+    }
+
+    private async Task GetPendingDebts()
+    {
+        pendingDebts = debts.Where(t => t.Status == "Pending").ToList();
+
+    }
+
+    private void CalculateCurrentBalance()
+    {
+        totalInflow = (double)creditDebitTransactions.Where(t => t.CategoryId == "Credit").Sum(t => t.Amount);
+        totalOutflow = (double)creditDebitTransactions.Where(t => t.CategoryId == "Debit").Sum(t => t.Amount);
+        pendingDebt = (double)debts.Where(d => d.Status == "Pending").Sum(d => d.Amount);
+        clearedDebt = (double)debts.Where(d => d.Status == "Cleared").Sum(d => d.Amount);
+
+        currentBalance = totalInflow + pendingDebt - totalOutflow - clearedDebt;
+
+    }
+
+    private IEnumerable<DisplayTransactionModel> FilterTransactions()
+    {
+        var filtered = dashboardDisplayTransactionModels.AsQueryable();
+        return filtered;
+    }
+
+    private IEnumerable<DisplayTransactionModel> SortTransactions(IEnumerable<DisplayTransactionModel> filteredTransactions)
+    {
+        return (sortDirection) switch
+        {
+            ("Highest") => filteredTransactions.OrderByDescending(t => t.Amount).Take(5),
+            ("Lowest") => filteredTransactions.OrderBy(t => t.Amount).Take(5),
+            _ => filteredTransactions
+        };
+    }
+
+}

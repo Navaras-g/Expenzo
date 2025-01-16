@@ -1,0 +1,157 @@
+﻿@page "/addTransactions"
+@using Expenzo.Model
+@using Expenzo.Services;
+@using Expenzo.Services.Interface
+@inject ITransactionService transactionService
+@inject IDebtService debtService
+@inject NavigationManager navigationManager
+@inject AuthStateService authStateService
+
+<h3>AddTransactions</h3>
+<div>
+    <p>
+        Track your Transactions.
+    </p>
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <p class="error-message">@errorMessage</p>
+    }
+    <form>
+        <div>
+            <label>Transaction Category:</label>
+            <select @bind="transaction.CategoryId">
+                <option value="" disabled selected>Select a category</option>
+                <option value="Credit">Credit</option>
+                <option value="Debit">Debit</option>
+                <option value="Debt">Debt</option>
+            </select>
+        </div>
+        <div>
+            <label>Title:</label>
+            <input type="text" @bind="transaction.Title" />
+        </div>
+
+        @* Debt source and due date only avaible for category debt *@
+        @if (transaction.CategoryId == "Debt")
+        {
+            <div>
+                <label>Debt Source:</label>
+                <input type="text" @bind="debt.Source" />
+            </div>
+            <div>
+                <label>Due Date</label>
+                <input type="date" @bind="debt.DueDate" />
+            </div>
+            <div>
+                <label>Status</label>
+                <select @bind="debt.Status">
+                    <option value="" disabled selected>Select Status</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Cleared">Cleared</option>
+                </select>
+            </div>
+        }
+
+        <div>
+            <label>Amount:</label>
+            <input type="number" @bind="transaction.Amount" />
+        </div>
+
+        <div>
+            <label>Tag Type:</label>
+            <select @bind="tagType">
+                <option value="Custom">Custom</option>
+                <option value="Existing">Existing</option>
+            </select>
+        </div>
+
+        @if (tagType == "Existing")
+        {
+            <div>
+                <label>Existing Tag:</label>
+                <select @bind="transaction.TagId">
+                    <option value="" disabled selected>Select a tag</option>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Yearly">Yearly</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Fuel">Fuel</option>
+                </select>
+            </div>
+        }
+        else
+        {
+            <div>
+                <label>Custom Tag:</label>
+                <input type="text" @bind="transaction.TagId" />
+            </div>
+        }
+
+        <div>
+            <label>Note:</label>
+            <input type="text" @bind="transaction.Note" />
+        </div>
+        <button type="button" @onclick="SaveTransaction">Save Transaction</button>
+    </form>
+</div>
+
+@code {
+    private Transaction transaction = new Transaction();
+    private Debt debt = new Debt();
+    private string tagType;
+    private String errorMessage;
+
+    private async Task SaveTransaction()
+    {
+        //Getting logged in user
+        try
+        {
+            var user = authStateService.GetLoggedInUser();
+            if (user != null)
+            {
+                transaction.UserId = user.UserId;
+
+                try
+                {
+                    // Saving the new transaction
+                    int transactionId = await transactionService.SaveTransactionAsync(transaction);
+
+                    // save extra info if it is debt
+                    if (transaction.CategoryId == "Debt")
+                    {
+                        debt.TransactionId = transactionId;
+                        try
+                        {
+                            await debtService.SaveDebtAsync(debt);
+                        }
+                        catch (Exception ex)
+                        {
+                            errorMessage = $"An error occurred while saving the debt: {ex.Message}";
+                            Console.WriteLine(errorMessage); // Log for debugging
+                        }
+                    }
+
+                    // Resetting the user object
+                    transaction = new Transaction();
+                    // Clearing the error message
+                    errorMessage = null;
+
+                    // Redirect to transactions page
+                    navigationManager.NavigateTo("/viewTransactions");
+
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = $"An error occurred while saving the transaction: {ex.Message}";
+                    Console.WriteLine(errorMessage); // Log for debugging
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred while obtaining the logged in user: {ex.Message}";
+            Console.WriteLine(errorMessage); // Log for debugging
+        }
+
+    }
+
+}

@@ -1,0 +1,83 @@
+﻿@page "/signup"
+@using Expenzo.Model
+@using Expenzo.Services;
+@using Expenzo.Services.Interface
+@inject IUserService userService
+@inject NavigationManager navigationManager
+
+<h3>Signup</h3>
+
+@* Sign up form *@
+<div>
+    <p>
+        Already have an account?
+        <a href="/">Login</a>
+    </p>
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <p class="error-message">@errorMessage</p>
+    }
+    <form>
+        <div>
+            <label>Username:</label>
+            <input type="text" @bind="user.Username" />
+        </div>
+        <div>
+            <label>Password:</label>
+            <input type="password" @bind="user.Password" />
+        </div>
+        @* <div> *@
+        @*     <label>Retype Password:</label> *@
+        @*     <input type="password" @bind="retypePassword" /> *@
+        @* </div> *@
+        <div>
+            <label>Preferred Currency:</label>
+            <select @bind="user.CurrencyId">
+                <option value="USD">USD - United States Dollar</option>
+                <option value="EUR">EUR - Euro</option>
+                <option value="GBP">GBP - British Pound</option>
+                <option value="NRS">NRS - Nepalese Rupees</option>
+            </select>
+        </div>
+        <button type="button" @onclick="SignupUser">Sign Up</button>
+    </form>
+</div>
+
+@code {
+    private User user = new User();
+    // private String retypePassword;
+    private String errorMessage;
+
+    private async Task SignupUser()
+    {
+        try
+        {
+            // Input Validation
+
+
+            // Getting user by the given username. If a user is retrieved, it means a user already exists with the given username.
+            var existingUsers = await userService.GetAllUsersAsync();
+            if (existingUsers.Any(u =>
+                u.Username.Equals(user.Username, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new Exception("Username already exists.");
+            }
+
+            // Saving the new user if username is unique
+            await userService.SaveUserAsync(user);
+            // Resetting the user object
+            user = new User();
+            // Clearing the error message
+            errorMessage = null;
+            // Redirect to login page
+            navigationManager.NavigateTo("/");
+
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred while signing in the user: {ex.Message}";
+            Console.WriteLine(errorMessage); // Log for debugging
+        }
+    }
+
+}

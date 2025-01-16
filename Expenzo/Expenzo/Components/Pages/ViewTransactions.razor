@@ -1,0 +1,365 @@
+﻿@page "/viewTransactions"
+@using Expenzo.Model
+@using Expenzo.Services
+@using Expenzo.Services.Interface;
+@inject ITransactionService transactionService
+@inject IDebtService debtService
+@inject AuthStateService authStateService
+@inject NavigationManager navigationManager
+
+<style>
+    table {
+    width: 100%;
+    border-collapse: collapse; /* Remove space between table cells */
+    margin-top: 20px;
+    font-family: Arial, sans-serif;
+    }
+
+    th {
+    background-color: #4CAF50; /* Green background for header */
+    color: white;
+    padding: 10px;
+    text-align: left;
+    font-weight: bold;
+    border-bottom: 2px solid #ddd; /* Border under headers */
+    }
+
+    td, th {
+    padding: 8px 12px;
+    border-bottom: 1px solid #ddd;
+    }
+
+
+</style>
+
+<h3>All Transactions</h3>
+<br />
+<h4>Username: @loggedInUser.Username</h4>
+<h4>Current Balance: @currentBalance</h4>
+<br />
+
+@* Filters *@
+
+<button @onclick="NavigateToAddPage"></button>
+
+<div>
+    <h4>Filters</h4>
+    <div>
+        <label>Category:</label>
+        <select @bind="filterCategory">
+            <option value="NoFilter">No Filter</option>
+            <option value="Credit">Credit</option>
+            <option value="Debit">Debit</option>
+            <option value="Debt">Debt</option>
+        </select>
+    </div>
+    <div>
+        <label>Tag:</label>
+        <select @bind="filterTag">
+            <option value="NoFilter">No Filter</option>
+            <option value="Monthly">Monthly</option>
+            <option value="Yearly">Yearly</option>
+            <option value="Rent">Rent</option>
+            <option value="Fuel">Fuel</option>
+        </select>
+    </div>
+    <br />
+    <div>
+        <label>Date From</label>
+        <input type="date" class="form-control" @bind="filterDateFrom" />
+    </div>
+    <div>
+        <label>Date To</label>
+        <input type="date" class="form-control" @bind="filterDateTo" />
+    </div>
+    <br />
+    <div>
+        <label>Specific Date</label>
+        <input type="date" class="form-control" @bind="filterSpecificDate" />
+    </div>
+    <br />
+    <div>
+        <label>Sort By</label>
+        <select @bind="selectedSortOption">
+            <option value="">None</option>
+            <option value="TransactionId">Transaction ID</option>
+            <option value="CreatedDate">Created Date</option>
+        </select>
+    </div>
+    <div>
+        <label>Sort Direction</label>
+        <select @bind="sortDirection">
+            <option value="Ascending">Ascending</option>
+            <option value="Descending">Descending</option>
+        </select>
+    </div>
+</div>
+<br />
+
+@if (filterCategory != "Debt")
+{
+    <div>
+        <h4>Inflows and Outflows</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Id</th>
+                    <th>Category</th>
+                    <th>Tag</th>
+                    <th>Amount</th>
+                    <th>Created Date</th>
+                    <th>Title</th>
+                    <th>Note</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (sortedTransactions.Any())
+                {
+                    @foreach (var transaction in sortedTransactions)
+                    {
+                        <tr>
+                            <th>@transaction.TransactionId</th>
+                            <th>@transaction.CategoryId</th>
+                            <th>@transaction.TagId</th>
+                            <th>@transaction.Amount</th>
+                            <th>@transaction.CreatedDate</th>
+                            <th>@transaction.Title</th>
+                            <th>@transaction.Note</th>
+                            <th><button @onclick="() => DeleteTransactionsAsync(transaction.TransactionId)">Delete</button></th>
+                        </tr>
+                    }
+                }
+
+            </tbody>
+        </table>
+    </div>
+}
+
+
+
+
+
+@code {
+    private User loggedInUser = new User();
+
+    private List<Transaction> userTransactions = new List<Transaction>();
+    private List<Transaction> creditDebitTransactions = new List<Transaction>();
+    private List<Transaction> debtTransactions = new List<Transaction>();
+
+    private List<DisplayDebtModel> debts = new List<DisplayDebtModel>();
+
+    private double currentBalance;
+    private double totalInflow;
+    private double totalOutflow;
+    private double pendingDebt;
+    private double clearedDebt;
+
+    //for filters
+    private IEnumerable<Transaction> filteredTransactions => FilterTransactions();
+    private IEnumerable<Transaction> sortedTransactions => SortTransactions(filteredTransactions);
+
+    private IEnumerable<DisplayDebtModel> filteredDebts => FilterDebts();
+    private IEnumerable<DisplayDebtModel> sortedDebts => SortDebts(filteredDebts);
+
+    // private List<Transaction> filteredCreditDebitTransactions = new List<Transaction>();
+    // private List<DisplayDebtModel> filteredDebts = new List<DisplayDebtModel>();
+
+    //Filter Properties
+    private string filterCategory = "NoFilter";
+    private string filterTag = "NoFilter";
+    private DateTime? filterDateFrom;
+    private DateTime? filterDateTo;
+    private DateTime? filterSpecificDate;
+    private string keywords;
+    private string selectedSortOption;
+    private string sortDirection;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetLoggedInUserDetailAsync();
+        await GetLoggedInUsersTransactionsAsync();
+        // separating debt from credit and debit (inflow and outflow)
+        await SeparateDebtsFromOtherTransactions();
+        // combining debt and its transaction to display debt model
+        await GetDebtRecords();
+        CalculateCurrentBalance();
+    }
+
+    private async Task GetLoggedInUserDetailAsync()
+    {
+        loggedInUser = authStateService.GetLoggedInUser();
+        if (loggedInUser == null)
+        {
+            navigationManager.NavigateTo("/");
+        }
+    }
+
+    private async Task GetLoggedInUsersTransactionsAsync()
+    {
+        // all transactions belonging to the logged in user
+        userTransactions = await transactionService.GetUsersTransactionsAsync(loggedInUser.UserId);
+    }
+
+    private async Task NavigateToAddPage()
+    {
+        navigationManager.NavigateTo("/addtransactions");
+    }
+
+    private async Task SeparateDebtsFromOtherTransactions()
+    {
+        debtTransactions = userTransactions.Where(t => t.CategoryId == "Debt").ToList();
+
+        creditDebitTransactions = userTransactions.Where(t => t.CategoryId != "Debt").ToList();
+    }
+
+    private async Task GetDebtRecords()
+    {
+        foreach (Transaction debtTransaction in debtTransactions)
+        {
+            // setting attributes already present in transaction obj
+            DisplayDebtModel displayDebtModel = new DisplayDebtModel(debtTransaction.TransactionId, debtTransaction.Title, debtTransaction.Amount,
+                debtTransaction.CreatedDate, debtTransaction.Note, debtTransaction.TagId, debtTransaction.UserId, debtTransaction.CategoryId);
+
+            Debt debt = await debtService.GetDebtByTransactionIdAsync(debtTransaction.TransactionId);
+
+            if (debt != null)
+            {
+                displayDebtModel.DebtId = debt.DebtId;
+                displayDebtModel.Source = debt.Source;
+                displayDebtModel.DueDate = debt.DueDate;
+                displayDebtModel.Status = debt.Status;
+
+                // Add to the list only if debt is not null
+                debts.Add(displayDebtModel);
+            }
+        }
+    }
+
+    private void CalculateCurrentBalance()
+    {
+        totalInflow = (double)creditDebitTransactions.Where(t => t.CategoryId == "Credit").Sum(t => t.Amount);
+        totalOutflow = (double)creditDebitTransactions.Where(t => t.CategoryId == "Debit").Sum(t => t.Amount);
+        pendingDebt = (double)debts.Where(d => d.Status == "Pending").Sum(d => d.Amount);
+        clearedDebt = (double)debts.Where(d => d.Status == "Cleared").Sum(d => d.Amount);
+
+        currentBalance = totalInflow + pendingDebt - totalOutflow - clearedDebt;
+    }
+
+    // Filter and sorting
+    private IEnumerable<Transaction> FilterTransactions()
+    {
+        var filtered = creditDebitTransactions.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filterCategory) && filterCategory != "NoFilter")
+        {
+            filtered = filtered.Where(t => t.CategoryId == filterCategory);
+        }
+
+        if (filterTag != "NoFilter")
+        {
+            filtered = filtered.Where(t => t.TagId.Contains(filterTag));
+        }
+
+        if (!string.IsNullOrEmpty(keywords))
+        {
+            filtered = filtered.Where(t => t.Title.Contains(keywords, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (filterSpecificDate.HasValue)
+        {
+            filtered = filtered.Where(t => t.CreatedDate.Date == filterSpecificDate.Value.Date);
+        }
+        else if (filterDateFrom.HasValue || filterDateTo.HasValue)
+        {
+            filtered = filtered.Where(t =>
+                (!filterDateFrom.HasValue || t.CreatedDate.Date >= filterDateFrom.Value.Date) &&
+                (!filterDateTo.HasValue || t.CreatedDate.Date <= filterDateTo.Value.Date));
+        }
+
+        return filtered;
+    }
+
+
+    private IEnumerable<Transaction> SortTransactions(IEnumerable<Transaction> filteredTransactions)
+    {
+        return (selectedSortOption, sortDirection) switch
+        {
+            ("TransactionId", "Ascending") => filteredTransactions.OrderBy(t => t.TransactionId),
+            ("TransactionId", "Descending") => filteredTransactions.OrderByDescending(t => t.TransactionId),
+            ("CreatedDate", "Ascending") => filteredTransactions.OrderBy(t => t.CreatedDate),
+            ("CreatedDate", "Descending") => filteredTransactions.OrderByDescending(t => t.CreatedDate),
+            _ => filteredTransactions
+        };
+    }
+    private async Task DeleteTransactionsAsync(int transactionId)
+    {
+        try
+        {
+            bool result = await transactionService.DeleteTransactionAsync(transactionId); // Await the async method
+            if (result)
+            {
+                // Pass the logged-in user's ID to refresh their transactions
+                userTransactions = await transactionService.GetUsersTransactionsAsync(loggedInUser.UserId);
+            }
+            else
+            {
+                Console.WriteLine($"Transaction with ID {transactionId} could not be deleted.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting transaction: {ex.Message}");
+        }
+    }
+
+
+    // for debt
+    private IEnumerable<DisplayDebtModel> FilterDebts()
+    {
+        var filtered = debts.AsQueryable();
+
+        if (!string.IsNullOrEmpty(filterCategory) && filterCategory != "NoFilter")
+        {
+            filtered = filtered.Where(t => t.CategoryId == filterCategory);
+        }
+
+        if (filterTag != "NoFilter")
+        {
+            filtered = filtered.Where(t => t.TagId.Contains(filterTag));
+        }
+
+        if (!string.IsNullOrEmpty(keywords))
+        {
+            filtered = filtered.Where(t => t.Title.Contains(keywords, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (filterSpecificDate.HasValue)
+        {
+            filtered = filtered.Where(t => t.CreatedDate.Date == filterSpecificDate.Value.Date);
+        }
+        else if (filterDateFrom.HasValue || filterDateTo.HasValue)
+        {
+            filtered = filtered.Where(t =>
+                (!filterDateFrom.HasValue || t.CreatedDate.Date >= filterDateFrom.Value.Date) &&
+                (!filterDateTo.HasValue || t.CreatedDate.Date <= filterDateTo.Value.Date));
+        }
+
+        return filtered;
+    }
+
+
+    private IEnumerable<DisplayDebtModel> SortDebts(IEnumerable<DisplayDebtModel> filteredDebts)
+    {
+        return (selectedSortOption, sortDirection) switch
+        {
+            ("TransactionId", "Ascending") => filteredDebts.OrderBy(t => t.TransactionId),
+            ("TransactionId", "Descending") => filteredDebts.OrderByDescending(t => t.TransactionId),
+            ("CreatedDate", "Ascending") => filteredDebts.OrderBy(t => t.CreatedDate),
+            ("CreatedDate", "Descending") => filteredDebts.OrderByDescending(t => t.CreatedDate),
+            _ => filteredDebts
+        };
+    }
+
+}
